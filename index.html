@@ -1,0 +1,168 @@
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Circular Audio Equalizer</title>
+    <style>
+	
+	body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+}
+
+.container {
+    text-align: center;
+    padding: 20px;
+}
+
+h1 {
+    margin-bottom: 20px;
+}
+
+canvas {
+    background-color: #16213e;
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    /* Set size for initial render before JS adjusts it */
+    width: 300px; 
+    height: 300px;
+}
+
+button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #0f3460;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #1a2b40;
+}
+
+.status {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #94a3b8;
+}
+	</style>
+</head>
+<body>
+    <div class="container">
+        <h1>Circular Audio Equalizer UI</h1>
+        <canvas id="equalizerCanvas"></canvas>
+        <button id="startButton">Start Microphone Access</button>
+        <p class="status" id="statusMessage">Status: Waiting for microphone access.</p>
+    </div>
+    <script>
+	
+	document.addEventListener('DOMContentLoaded', () => {
+    const canvas = document.getElementById('equalizerCanvas');
+    const startButton = document.getElementById('startButton');
+    const statusMessage = document.getElementById('statusMessage');
+    const ctx = canvas.getContext('2d');
+
+    let audioContext;
+    let analyser;
+    let source;
+    let dataArray;
+    let bufferLength;
+
+    const CANVAS_SIZE = Math.min(window.innerWidth * 0.8, window.innerHeight * 0.8, 400);
+    canvas.width = CANVAS_SIZE;
+    canvas.height = CANVAS_SIZE;
+    const centerX = CANVAS_SIZE / 2;
+    const centerY = CANVAS_SIZE / 2;
+    const radius = CANVAS_SIZE / 4; // Base radius for the inner circle
+
+    startButton.addEventListener('click', startEqualizer);
+
+    function startEqualizer() {
+        if (audioContext) return; // Prevent multiple initializations
+
+        // 1. Access microphone using MediaStream API
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                initializeAudio(stream);
+                statusMessage.textContent = "Status: Microphone access granted. Visualizing audio...";
+                startButton.disabled = true;
+                animate(); // Start the animation loop
+            })
+            .catch(err => {
+                console.error('Error accessing microphone:', err);
+                statusMessage.textContent = "Status: Error accessing microphone. Please allow access.";
+            });
+    }
+
+    function initializeAudio(stream) {
+        // 2. Analyze frequency data using Web Audio API (AnalyserNode)
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioContext.createAnalyser();
+        source = audioContext.createMediaStreamSource(stream);
+
+        source.connect(analyser);
+        // Reduce FFT size for smoother visual bars (power of 2, 32 to 32768)
+        analyser.fftSize = 256; 
+        
+        // Data array size is half of fftSize
+        bufferLength = analyser.frequencyBinCount; 
+        dataArray = new Uint8Array(bufferLength);
+    }
+
+    // 3. & 4. & 5. Render the circular visualizer & Smooth animation at 60 FPS
+    function animate() {
+        requestAnimationFrame(animate); // Ensures 60 FPS animation
+
+        // Get frequency data instantly
+        analyser.getByteFrequencyData(dataArray); 
+
+        // Clear canvas
+        ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        ctx.fillStyle = '#16213e'; // Background color for the inner circle area
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, CANVAS_SIZE / 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        const barWidth = (Math.PI * 2) / bufferLength;
+        
+        // Iterate through frequency data and draw bars around the circle
+        for (let i = 0; i < bufferLength; i++) {
+            const dataPoint = dataArray[i];
+            // Normalize data point (0-255) to a height multiplier (0.1 to 3)
+            const heightMultiplier = dataPoint / 255 * 2.5 + 0.5; 
+            // Calculate actual height, scaled by the base radius
+            const barHeight = radius * heightMultiplier - radius;
+
+            const angle = i * barWidth;
+            const startX = centerX + Math.cos(angle) * radius;
+            const startY = centerY + Math.sin(angle) * radius;
+            const endX = centerX + Math.cos(angle) * (radius + barHeight);
+            const endY = centerY + Math.sin(angle) * (radius + barHeight);
+
+            // Dynamic color gradient for visual appeal
+            const hue = i / bufferLength * 360;
+            ctx.strokeStyle = `hsl(${hue}, 80%, 60%)`;
+            ctx.lineWidth = 3; 
+
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+        }
+    }
+});
+	</script>
+</body>
+</html>
